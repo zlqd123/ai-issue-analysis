@@ -1,104 +1,95 @@
 # ai-issue-analysis
 
-一个通用的 GitHub composite action，用来在 Issue 打开或被评论时调用 Codex CLI 做分析，并把分析过程和最终结论持续回写到同一条评论里。
+一个通用的 GitHub Issue AI 分析工具，使用 OpenAI 兼容 API（如 DeepSeek、OpenAI、Azure 等）自动分析 Issue 并生成结论。
 
-实战效果展示：
+## 功能特点
 
-- [Bot 自动分析回复 ISSUE: 加载时间过长导致拜访好友失败](https://github.com/MaaEnd/MaaEnd/issues/1361#issuecomment-4071450863)
-- [Bot 响应 @ 进行分析回复 ISSUE: 换班时会把训练室干员换下](https://github.com/MaaAssistantArknights/MaaAssistantArknights/issues/15963#issuecomment-4067281056)
+- 支持任何 OpenAI 兼容的 API（DeepSeek、OpenAI、Azure、本地模型等）
+- 自动读取 Issue 正文和评论
+- 生成结构化的分析报告
+- 将分析结果回写到 Issue 评论
+- 简单易用，无需复杂配置
 
 ## 快速接入
 
-1. 准备一个 OpenAI 兼容的 API Key（OpenAI 官方、Azure、或其他兼容服务均可）
+### 1. 配置 Secrets
 
-2. 在你的 GitHub 仓库 - Settings - secrets - actions - new repository secret
+在你的 GitHub 仓库 → Settings → Secrets and variables → Actions 中添加：
 
-     - Name: `CODEX_API_KEY`
-     - Secret: 你的 API Key
+| Secret 名称 | 说明 | 示例值 |
+|-------------|------|--------|
+| `AI_API_KEY` | AI 服务的 API Key | `sk-xxx` |
+| `AI_BASE_URL` | API 端点 URL | `https://api.deepseek.com` |
+| `AI_MODEL` | 模型名称 | `deepseek-v4-flash` |
 
-   如果你使用非 OpenAI 官方端点，还需要额外添加：
+### 2. 复制文件
 
-     - Name: `CODEX_BASE_URL`
-     - Secret: 你的 API base URL（例如 `https://your-proxy.example.com/v1`）
+将以下文件复制到你的仓库：
 
-3. 把下面两个文件拷贝到你的仓库里，文件夹不要变
+```
+.github/
+├── workflows/
+│   └── ai-issue-analysis.yml
+└── scripts/
+    └── analyze_issue.py
+```
 
-    - [`.github/workflows/ai-issue-analysis.yml`](.github/workflows/ai-issue-analysis.yml)
-    - [`.claude/skills/generic-issue-log-analysis/SKILL.md`](.claude/skills/generic-issue-log-analysis/SKILL.md)
+### 3. 测试
 
-4. 新提个 issue 测试下能否正常运行了，或者在以前的 issue 里 `@github-actions`
+创建一个新 Issue，或在已有 Issue 中评论 `@github-actions`，即可触发 AI 分析。
 
-> [!TIP]
->
-> 如果你的项目有固定的日志包命名、关键日志路径、附件目录、模块映射或上游依赖，建议在这个通用版基础上微调 `SKILL.md`，分析质量会更高。最佳实践参考：
-> - [MaaEnd](https://github.com/MaaEnd/MaaEnd/blob/v2/.claude/skills/maaend-issue-log-analysis/SKILL.md)
-> - [MaaAssistantArknights](https://github.com/MaaAssistantArknights/MaaAssistantArknights/blob/dev-v2/.claude/skills/maa-issue-log-analysis/SKILL.md)
+## 支持的 AI 服务
 
-## 输入说明
+### DeepSeek
 
-- `issue-number`: Issue 编号，通常可以不传：
+```yaml
+AI_BASE_URL: https://api.deepseek.com
+AI_MODEL: deepseek-v4-flash
+```
 
-    - `issues` / `issue_comment` 事件会自动读取 `github.event.issue.number`
-    - `workflow_dispatch` 会自动读取输入名为 `issue_number` 的 dispatch 参数
-    
-    如果你的 workflow_dispatch 输入名不是 `issue_number`，或者你在其他事件里调用这个 action，就显式传 `issue-number`。
+### OpenAI
 
-- `github-token`: 用于创建和更新 Issue 评论
-- `codex-api-key`: Codex CLI 使用的 API Key（会设为 `OPENAI_API_KEY` 环境变量），支持传多个 key，每行一个，action 会随机选择一个使用
-- `codex-base-url`: API 端点 base URL（会设为 `OPENAI_BASE_URL` 环境变量），留空则使用 OpenAI 默认端点
-- `codex-model`: 模型名称，默认 `o3`
-- `codex-package`: 安装的 npm 包名，默认 `@openai/codex`
-- `bot-name`: 从 `issue_comment` 正文中剥离掉的 bot mention，比如 `@YourBot`
-- `initial-comment-body`: 开始分析时先发出的评论正文
-- `action-link-text`: 评论里展示的运行链接文字
-- `details-summary`: 分析过程折叠块的标题
-- `prompt-template`: 基础分析提示词模板
-- `comment-prompt-template`: 有评论补充要求时追加的提示词模板
-- `stream-update-interval-seconds`: 流式更新评论的间隔秒数，默认 `30`
-- `checkout-repository`: 是否在 action 内部自动执行 `actions/checkout`，默认 `true`
-- `answer-file`: AI 写入最终结论的文件路径，默认 `answer.md`
-- `extra-comment-content`: 始终追加在每次评论最末尾的额外内容，默认为空
+```yaml
+AI_BASE_URL: https://api.openai.com/v1
+AI_MODEL: gpt-4o
+```
 
-## 输出说明
+### Azure OpenAI
 
-- `issue-number`: 本次运行实际解析出的 Issue 编号
-- `comment-id`: 创建并持续更新的评论 ID
-- `comment-url`: 创建并持续更新的评论 URL
-- `analysis-prompt`: 本次最终传给 Codex 的 prompt
-- `codex-output`: 完整执行日志，包含 Codex 启动前的参数打印、prompt 正文，以及 Codex CLI 输出
-- `final-conclusion`: Codex 写入 `answer-file` 的最终结论
-- `analysis-prompt`、`codex-output` 和 `final-conclusion` 在过长时会为适配 GitHub Actions output 大小限制而被截断；完整内容优先从 artifacts 读取
+```yaml
+AI_BASE_URL: https://your-resource.openai.azure.com/
+AI_MODEL: gpt-4o
+```
 
-## 上传产物
+### 本地模型（如 Ollama）
 
-- `codex-output-issue-<issue-number>-comment-<comment-id>`: 完整执行日志，包含启动前参数、prompt 正文和 Codex CLI 输出
-- `final-conclusion-issue-<issue-number>-comment-<comment-id>`: 最终结论文本
+```yaml
+AI_BASE_URL: http://localhost:11434/v1
+AI_MODEL: llama3
+```
 
-## Skill 配合
+## 工作流程
 
-- 这个 action 只负责 GitHub Actions 编排、评论更新、Codex CLI 调用和 prompt 拼接，不内置项目领域知识
-- 对需要分析 issue 附件、日志包、运行时配置、跨仓库代码路径的项目，建议配套提供项目自己的 issue 分析 skill
-- 一个可行的 skill 一般至少会覆盖这些步骤：读取 issue 正文和评论、定位并下载日志附件、先建立时间线再筛证据、最后回溯到代码和文档做归因
-- 如果没有这层 skill，action 仍然能运行，但对日志包、截图、跨模块调用链这类问题，分析质量通常会明显下降
-- 最佳实践参考，MaaEnd: `https://github.com/MaaEnd/MaaEnd/blob/v2/.claude/skills/maaend-issue-log-analysis/SKILL.md`
-- 最佳实践参考，MaaAssistantArknights: `https://github.com/MaaAssistantArknights/MaaAssistantArknights/blob/dev-v2/.claude/skills/maa-issue-log-analysis/SKILL.md`
+1. 用户创建 Issue 或评论 `@github-actions`
+2. GitHub Actions 自动触发
+3. Python 脚本读取 Issue 内容
+4. 调用 AI API 生成分析
+5. 将分析结果回写到 Issue 评论
 
-## 模板变量：
+## 自定义
 
-- `{{issue_number}}`
-- `{{answer_file}}`
-- `{{comment_body}}`
-- `{{repository}}`
-- `{{event_name}}`
+### 修改分析提示词
 
-## 行为说明：
+编辑 `.github/scripts/analyze_issue.py` 中的 `prompt` 变量，可以自定义 AI 的分析行为。
 
-- action 内部会自动 `checkout` 调用方仓库
-- 如果调用方已经自己 checkout，或者前置步骤会生成工作区文件，可以把 `checkout-repository` 设为 `false`
-- 会自动安装 `@openai/codex`
-- 会先创建一条评论，然后持续更新这条评论
-- 会导出 `comment-id`、`comment-url`、`analysis-prompt`、`codex-output`、`final-conclusion` 等 action outputs
-- `codex-output` 会包含 Codex 启动前的参数打印和 prompt 正文，不再只是 Codex 进程本身的 stdout/stderr
-- 会上传 Codex 原始输出和最终结论两个 artifacts
-- 最终评论会包含最终结论、完整分析过程折叠块，以及当前 Actions 运行链接
-- `codex-api-key` 兼容单个 key，也兼容多个 key 按行填写；传多个时每次运行会随机选一个
+### 添加项目特定知识
+
+如果你的项目有特定的日志格式、错误模式或架构，可以在提示词中添加相关说明，提高分析准确性。
+
+## 示例
+
+查看 [zlqd123/zunmouse#5](https://github.com/zlqd123/zunmouse/issues/5) 的 AI 分析结果。
+
+## 许可证
+
+MIT License

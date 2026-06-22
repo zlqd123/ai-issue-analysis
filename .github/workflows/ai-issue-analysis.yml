@@ -1,5 +1,4 @@
 name: AI Issue Analysis
-
 on:
   issues:
     types: [opened]
@@ -8,12 +7,11 @@ on:
   workflow_dispatch:
     inputs:
       issue_number:
-        description: "Issue number to analyze"
+        description: 'Issue number to analyze'
         required: true
         type: number
-
 jobs:
-  codex-analysis:
+  analyze:
     if: |
       (github.event_name == 'issues' && github.event.action == 'opened') ||
       github.event_name == 'workflow_dispatch' ||
@@ -27,27 +25,47 @@ jobs:
       contents: read
       issues: write
     steps:
-      # 推荐配套：
-      # - .claude/skills/generic-issue-log-analysis/SKILL.md
-      - name: Analyze issue with Codex
-        id: codex
-        continue-on-error: true
-        uses: MistEO/ai-issue-analysis@codex
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          codex-api-key: ${{ secrets.CODEX_API_KEY }}
-          codex-base-url: ${{ secrets.CODEX_BASE_URL }}
-          codex-model: ${{ secrets.CODEX_MODEL }}
-          bot-name: "@github-actions"
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      - name: 查看完整输入输出
-        if: always()
-        env:
-          ISSUE_NUMBER: ${{ steps.codex.outputs.issue-number }}
-          COMMENT_ID: ${{ steps.codex.outputs.comment-id }}
-          COMMENT_URL: ${{ steps.codex.outputs.comment-url }}
+      - name: Resolve issue number
+        id: issue
+        shell: bash
         run: |
-          echo "issue_number=$ISSUE_NUMBER"
-          echo "comment_id=$COMMENT_ID"
-          echo "comment_url=$COMMENT_URL"
-          echo "(Full codex-output and final-conclusion are available in the uploaded artifacts)"
+          if [ -n "${{ github.event.issue.number }}" ]; then
+            echo "number=${{ github.event.issue.number }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "number=${{ inputs.issue_number }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create initial comment
+        id: comment
+        uses: peter-evans/create-or-update-comment@v4
+        with:
+          issue-number: ${{ steps.issue.outputs.number }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+          body: |
+            🤖 **AI 正在分析该 Issue...**
+            
+            感谢您的反馈！AI 正在自动分析该问题，预计耗时约 10 分钟。
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install openai requests
+
+      - name: Run AI analysis
+        shell: bash
+        env:
+          AI_API_KEY: ${{ secrets.AI_API_KEY }}
+          AI_BASE_URL: ${{ secrets.AI_BASE_URL }}
+          AI_MODEL: ${{ secrets.AI_MODEL }}
+          ISSUE_NUMBER: ${{ steps.issue.outputs.number }}
+          COMMENT_ID: ${{ steps.comment.outputs.comment-id }}
+          REPO: ${{ github.repository }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUN_ID: ${{ github.run_id }}
+        run: python .github/scripts/analyze_issue.py
